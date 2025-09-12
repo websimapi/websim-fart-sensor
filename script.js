@@ -225,12 +225,19 @@ class FartBopGame {
             }
 
             const currentAlpha = event.alpha;
-            let diff = Math.abs(currentAlpha - this.startAlpha);
+            // Calculate the target angle, which is 180 degrees from the start.
+            const targetAlpha = (this.startAlpha + 180) % 360;
+
+            // Calculate the difference, handling the 360-degree wraparound.
+            let diff = Math.abs(currentAlpha - targetAlpha);
             if (diff > 180) {
                 diff = 360 - diff;
             }
 
-            if (diff >= 180) { // Require a 180 degree twist
+            // Check if the current angle is "close enough" to the target.
+            // A threshold of 20 degrees (10 on each side) makes it robust.
+            // This means the user has twisted to the opposite side.
+            if (diff <= 20) {
                 this.handleAction('twist');
             }
         }
