@@ -18,6 +18,7 @@ class FartBopGame {
         this.isWaitingForTwist = false;
         this.isWaitingForRotate = false;
         this.maxAlphaDiff = 0; // Track max twist angle
+        this.shakeMagnitude = 0;
 
         // Touch state
         this.touchStartX = 0;
@@ -201,6 +202,7 @@ class FartBopGame {
             this.elements.permissionBanner.querySelector('p').textContent = `To detect shaking, twisting, and rotating, we need access to your device's motion sensors.`;
             this.elements.permissionBanner.style.display = 'block';
         } else {
+            // For non-iOS 13+ browsers, permissions are not needed
             this.setupMotionSensors();
         }
     }
@@ -228,17 +230,29 @@ class FartBopGame {
 
     setupMotionSensors() {
         let lastMotionTime = 0;
-        const motionDebounce = 500;
+        const motionDebounce = 100; // a small debounce to not overwhelm
         const motionThreshold = 15;
+        const shakeThreshold = 25;
 
         window.addEventListener('devicemotion', e => {
+            if (!e.acceleration) return;
+
             const now = Date.now();
-            if (now - lastMotionTime < motionDebounce) return;
             
             const { acceleration } = e;
-            if (acceleration && acceleration.x !== null) {
-                const magnitude = Math.sqrt(acceleration.x ** 2 + acceleration.y ** 2 + acceleration.z ** 2);
-                if (magnitude > motionThreshold) {
+            const magnitude = Math.sqrt(acceleration.x ** 2 + acceleration.y ** 2 + acceleration.z ** 2);
+            
+            if (this.isGameActive && this.currentCommand && this.currentCommand.id === 'shake') {
+                this.shakeMagnitude = Math.min(100, this.shakeMagnitude + magnitude * 0.8);
+                this.updateVisualFeedback();
+                
+                if (this.shakeMagnitude > 99) {
+                    this.handleAction('shake');
+                    this.shakeMagnitude = 0;
+                }
+            } else {
+                // Free-fart shake mode outside of a command
+                if (now - lastMotionTime > 500 && magnitude > motionThreshold) {
                     this.handleAction('shake');
                     lastMotionTime = now;
                 }
@@ -258,14 +272,12 @@ class FartBopGame {
             }
 
             const currentAlpha = event.alpha;
-            // Calculate the angular distance from the starting orientation
             let diff = Math.abs(currentAlpha - this.startAlpha);
             if (diff > 180) {
                 diff = 360 - diff; // Handle the 360-degree wrap-around
             }
-
-            // Update the maximum rotation achieved so far for this command
-            this.maxAlphaDiff = Math.max(this.maxAlphaDiff, diff);
+            this.maxAlphaDiff = diff;
+            this.updateVisualFeedback();
 
             // If the user has twisted far enough at any point, register the action
             // Using a tolerance (e.g., 170 degrees) makes it more forgiving.
@@ -283,6 +295,8 @@ class FartBopGame {
 
             const betaDiff = Math.abs(event.beta - this.startBeta);
             const gammaDiff = Math.abs(event.gamma - this.startGamma);
+
+            this.updateVisualFeedback(Math.max(betaDiff, gammaDiff));
 
             if (betaDiff >= 90 || gammaDiff >= 90) {
                 this.handleAction('rotate');
@@ -317,6 +331,7 @@ class FartBopGame {
         this.startBeta = null;
         this.startGamma = null;
         this.maxAlphaDiff = 0; // Reset max twist for the new command
+        this.shakeMagnitude = 0;
 
         const enabledTriggers = this.triggers.filter(t => t.enabled);
         
@@ -337,6 +352,7 @@ class FartBopGame {
         }
         
         this.elements.commandText.textContent = this.currentCommand.instruction;
+        this.updateVisualFeedback(0, true); // Initialize visual feedback for new command
         this.playFartSound(this.currentCommand.soundIndex); // Command sound
         this.startTimer();
     }
@@ -371,6 +387,8 @@ class FartBopGame {
         this.startBeta = null;
         this.startGamma = null;
         this.maxAlphaDiff = 0;
+        this.shakeMagnitude = 0;
+        this.elements.visualFeedbackContainer.innerHTML = '✔️';
 
         setTimeout(() => this.nextCommand(), 500);
     }
@@ -386,6 +404,8 @@ class FartBopGame {
         this.startBeta = null;
         this.startGamma = null;
         this.maxAlphaDiff = 0;
+        this.shakeMagnitude = 0;
+        this.elements.visualFeedbackContainer.innerHTML = '';
         this.elements.finalScoreDisplay.textContent = this.score;
 
         this.elements.gameUI.classList.add('hidden');
@@ -425,6 +445,65 @@ class FartBopGame {
         
         this.elements.sensorDisplay.classList.add('triggered');
         setTimeout(() => this.elements.sensorDisplay.classList.remove('triggered'), 500);
+    }
+
+    updateVisualFeedback(value, isInitial = false) {
+        if (!this.isGameActive || !this.currentCommand) {
+            this.elements.visualFeedbackContainer.innerHTML = '';
+            return;
+        }
+        
+        let html = '';
+        let color = '#f44336'; // Red
+        const commandId = this.currentCommand.id;
+
+        if (commandId === 'twist') {
+            const degrees = isInitial ? 0 : Math.round(this.maxAlphaDiff);
+            const progress = Math.min(1, degrees / 180);
+            html = `${degrees}°`;
+            color = this.calculateColor(progress);
+        } else if (commandId === 'rotate') {
+            const degrees = isInitial ? 0 : Math.round(value);
+            const progress = Math.min(1, degrees / 90);
+            html = `${degrees}°`;
+            color = this.calculateColor(progress);
+        } else if (commandId === 'shake') {
+            const progress = Math.min(100, this.shakeMagnitude) / 100;
+            html = `<div class="feedback-shake-bar-container"><div class="feedback-shake-bar" style="width: ${progress * 100}%; background-color: ${this.calculateColor(progress)};"></div></div>`;
+        } else if (commandId === 'tap' || commandId === 'double_tap' || commandId === 'swipe_up' || commandId === 'swipe_down') {
+            // For instant actions, we can just show an icon
+            const iconMap = { tap: '👆', double_tap: '✌️', swipe_up: '⬆️', swipe_down: '⬇️' };
+            html = `<span style="transform: scale(1.2);">${iconMap[commandId]}</span>`;
+        }
+        
+        if (commandId === 'shake') {
+             this.elements.visualFeedbackContainer.innerHTML = html;
+        } else {
+            this.elements.visualFeedbackContainer.innerHTML = html;
+            this.elements.visualFeedbackContainer.style.color = color;
+        }
+    }
+
+    calculateColor(progress) {
+        // Linear interpolation from Red -> Yellow -> Green
+        const red = [244, 67, 54];
+        const yellow = [255, 235, 59];
+        const green = [76, 175, 80];
+
+        let r, g, b;
+
+        if (progress < 0.5) {
+            const p = progress * 2;
+            r = Math.round(red[0] * (1 - p) + yellow[0] * p);
+            g = Math.round(red[1] * (1 - p) + yellow[1] * p);
+            b = Math.round(red[2] * (1 - p) + yellow[2] * p);
+        } else {
+            const p = (progress - 0.5) * 2;
+            r = Math.round(yellow[0] * (1 - p) + green[0] * p);
+            g = Math.round(yellow[1] * (1 - p) + green[1] * p);
+            b = Math.round(yellow[2] * (1 - p) + green[2] * p);
+        }
+        return `rgb(${r}, ${g}, ${b})`;
     }
 }
 
