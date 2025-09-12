@@ -45,6 +45,7 @@ class FartBopGame {
             scoreDisplay: document.getElementById('score'),
             finalScoreDisplay: document.getElementById('final-score'),
             timerBar: document.getElementById('timer-bar'),
+            visualFeedbackContainer: document.getElementById('visual-feedback-container'),
         };
 
         this.triggers = [
