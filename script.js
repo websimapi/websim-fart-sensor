@@ -10,7 +10,12 @@ class FartBopGame {
         this.currentCommand = null;
         this.timeLimit = 3000; // 3 seconds
         this.timer = null;
-        this.lastTap = 0;
+        
+        // Double tap fix: Moved from instance-wide to a more contained scope
+        this.startAlpha = null;
+        this.isWaitingForTwist = false;
+        this.tapTimeout = null;
+        this.tapCount = 0;
 
         this.elements = {
             fartCounter: document.getElementById('fartCounter'),
@@ -36,7 +41,7 @@ class FartBopGame {
             { id: 'tap', name: '📱 Tap', instruction: 'Tap it!', enabled: true, isAvailable: true },
             { id: 'double_tap', name: '👆 Double Tap', instruction: 'Double Tap it!', enabled: true, isAvailable: true },
             { id: 'shake', name: '🤸 Shake', instruction: 'Shake it!', enabled: true, isAvailable: 'DeviceMotionEvent' in window },
-            { id: 'twist', name: '🌀 Twist', instruction: 'Twist it!', enabled: true, isAvailable: 'DeviceMotionEvent' in window },
+            { id: 'twist', name: '🌀 Twist', instruction: 'Twist it!', enabled: true, isAvailable: 'DeviceOrientationEvent' in window },
             { id: 'rotate', name: '📐 Rotate', instruction: 'Rotate it!', enabled: false, isAvailable: 'orientation' in window || 'onorientationchange' in window },
         ];
 
@@ -79,13 +84,13 @@ class FartBopGame {
         });
 
         // Universal listeners that delegate based on game state
-        document.addEventListener('click', () => this.handleAction('tap'));
-        document.addEventListener('touchend', () => {
-             const currentTime = new Date().getTime();
-             if (currentTime - this.lastTap < 300) this.handleAction('double_tap');
-             this.lastTap = currentTime;
-        });
+        document.addEventListener('click', () => this.handleTap());
+        
         window.addEventListener('orientationchange', () => this.handleAction('rotate'));
+        
+        if (this.triggers.find(t => t.id === 'twist')?.isAvailable) {
+            window.addEventListener('deviceorientation', e => this.handleDeviceOrientation(e));
+        }
 
         if (this.elements.permissionButton) {
             this.elements.permissionButton.addEventListener('click', (e) => {
@@ -93,6 +98,23 @@ class FartBopGame {
                 this.requestMotionPermissions();
             });
         }
+    }
+
+    handleTap() {
+        this.tapCount++;
+
+        if (this.tapTimeout) {
+            clearTimeout(this.tapTimeout);
+        }
+
+        this.tapTimeout = setTimeout(() => {
+            if (this.tapCount === 1) {
+                this.handleAction('tap');
+            } else if (this.tapCount >= 2) {
+                this.handleAction('double_tap');
+            }
+            this.tapCount = 0;
+        }, 300); // 300ms window for double tap
     }
 
     handleAction(actionId) {
@@ -138,60 +160,73 @@ class FartBopGame {
     }
 
     checkMotionPermissions() {
-        if (typeof DeviceMotionEvent.requestPermission === 'function') {
-            DeviceMotionEvent.requestPermission().then(state => {
-                if (state === 'granted') {
-                    this.setupMotionSensors();
-                } else if (state === 'prompt') {
-                    this.elements.permissionBanner.style.display = 'block';
-                }
-            });
+        if (typeof DeviceMotionEvent.requestPermission === 'function' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            this.elements.permissionBanner.style.display = 'block';
         } else {
             this.setupMotionSensors();
         }
     }
 
     requestMotionPermissions() {
-        if (typeof DeviceMotionEvent.requestPermission === 'function') {
-            DeviceMotionEvent.requestPermission().then(state => {
-                if (state === 'granted') {
-                    this.elements.permissionBanner.style.display = 'none';
-                    this.setupMotionSensors();
-                } else {
-                    this.elements.permissionBanner.innerHTML = '<p>Motion access denied. You can change this in your browser settings.</p>';
-                }
-            }).catch(console.error);
-        }
+        const motionPromise = typeof DeviceMotionEvent.requestPermission === 'function' 
+            ? DeviceMotionEvent.requestPermission()
+            : Promise.resolve('granted');
+        
+        const orientationPromise = typeof DeviceOrientationEvent.requestPermission === 'function'
+            ? DeviceOrientationEvent.requestPermission()
+            : Promise.resolve('granted');
+
+        Promise.all([motionPromise, orientationPromise]).then(([motionState, orientationState]) => {
+            if (motionState === 'granted' || orientationState === 'granted') {
+                this.elements.permissionBanner.style.display = 'none';
+                this.setupMotionSensors();
+                if (orientationState !== 'granted') console.log('Twist action might not work without orientation permission.');
+                if (motionState !== 'granted') console.log('Shake action might not work without motion permission.');
+            } else {
+                this.elements.permissionBanner.innerHTML = '<p>Motion/Orientation access denied. You can change this in your browser settings.</p>';
+            }
+        }).catch(console.error);
     }
 
     setupMotionSensors() {
         let lastMotionTime = 0;
         const motionDebounce = 500;
         const motionThreshold = 15;
-        const rotationThreshold = 200;
 
         window.addEventListener('devicemotion', e => {
             const now = Date.now();
             if (now - lastMotionTime < motionDebounce) return;
             
-            const { acceleration, rotationRate } = e;
+            const { acceleration } = e;
             if (acceleration && acceleration.x !== null) {
                 const magnitude = Math.sqrt(acceleration.x ** 2 + acceleration.y ** 2 + acceleration.z ** 2);
                 if (magnitude > motionThreshold) {
                     this.handleAction('shake');
                     lastMotionTime = now;
-                    return;
-                }
-            }
-
-            if (rotationRate && rotationRate.alpha !== null) {
-                const magnitude = Math.sqrt(rotationRate.alpha ** 2 + rotationRate.beta ** 2 + rotationRate.gamma ** 2);
-                if (magnitude > rotationThreshold) {
-                    this.handleAction('twist');
-                    lastMotionTime = now;
                 }
             }
         });
+    }
+    
+    handleDeviceOrientation(event) {
+        if (!this.isGameActive || !this.isWaitingForTwist || event.alpha === null) {
+            return;
+        }
+
+        if (this.startAlpha === null) {
+            this.startAlpha = event.alpha;
+            return;
+        }
+
+        const currentAlpha = event.alpha;
+        let diff = Math.abs(currentAlpha - this.startAlpha);
+        if (diff > 180) {
+            diff = 360 - diff;
+        }
+
+        if (diff >= 90) { // Check for 90 degrees in either direction
+            this.handleAction('twist');
+        }
     }
 
     startGame() {
@@ -214,6 +249,10 @@ class FartBopGame {
     }
     
     nextCommand() {
+        // Reset twist tracking for the new command
+        this.isWaitingForTwist = false;
+        this.startAlpha = null;
+
         const enabledTriggers = this.triggers.filter(t => t.enabled);
         
         // Prevent picking the same command twice in a row
@@ -224,6 +263,11 @@ class FartBopGame {
         }
        
         this.currentCommand = nextPossibleTriggers[Math.floor(Math.random() * nextPossibleTriggers.length)];
+        
+        if (this.currentCommand.id === 'twist') {
+            this.isWaitingForTwist = true;
+        }
+        
         this.elements.commandText.textContent = this.currentCommand.instruction;
         this.playFartSound(); // Command sound
         this.startTimer();
@@ -250,6 +294,8 @@ class FartBopGame {
         clearTimeout(this.timer);
         this.currentCommand = null;
         this.elements.commandText.textContent = 'Correct!';
+        this.isWaitingForTwist = false; // Stop listening for twist
+        this.startAlpha = null;
 
         setTimeout(() => this.nextCommand(), 500);
     }
@@ -259,6 +305,8 @@ class FartBopGame {
         this.isGameActive = false;
         clearTimeout(this.timer);
         this.currentCommand = null;
+        this.isWaitingForTwist = false;
+        this.startAlpha = null;
         this.elements.finalScoreDisplay.textContent = this.score;
 
         this.elements.gameUI.classList.add('hidden');
