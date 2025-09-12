@@ -12,42 +12,47 @@
 <body>
     <div class="container">
         <header class="header">
-            <h1 class="title">💨 FART SENSOR 💨</h1>
-            <p class="subtitle">Detecting device flatulence since 2024</p>
+            <h1 class="title">💨 FART BOP 💨</h1>
+            <p class="subtitle">The gassy reaction game</p>
         </header>
         
         <div class="sensor-display">
             <div class="fart-counter">
-                <span class="counter-label">Farts Detected:</span>
+                <span class="counter-label">Total Farts:</span>
                 <span class="counter-value" id="fartCounter">0</span>
             </div>
-            
-            <div class="sensor-status" id="sensorStatus">
-                <div class="status-indicator"></div>
-                <span>Sensor Active</span>
-            </div>
-            
             <div class="fart-visual" id="fartVisual">💨</div>
         </div>
 
+        <div id="game-container">
+            <div id="game-intro">
+                <h2>How to Play:</h2>
+                <p>Enable the triggers you want to play with below. Then, press start and follow the commands before time runs out!</p>
+                <button id="startGameBtn" class="game-btn">Start Game</button>
+            </div>
+            <div id="game-ui" class="hidden">
+                <div id="command-text">Get Ready...</div>
+                <div id="score-display">Score: <span id="score">0</span></div>
+                <div id="timer-bar-container">
+                    <div id="timer-bar"></div>
+                </div>
+            </div>
+            <div id="game-over-screen" class="hidden">
+                <h2>GAME OVER</h2>
+                <p>Final Score: <span id="final-score">0</span></p>
+                <button id="restartGameBtn" class="game-btn">Play Again</button>
+            </div>
+        </div>
+
         <div id="permission-request" class="permission-banner">
-            <p>To detect farts from shaking and twisting, we need access to your device's motion sensors.</p>
+            <p>To detect shaking and twisting, we need access to your device's motion sensors.</p>
             <button id="permission-button">Enable Motion Farts</button>
         </div>
         
-        <div class="trigger-info">
-            <h3>Fart Triggers Active:</h3>
-            <ul>
-                <li>📱 Tap anywhere on screen</li>
-                <li>🔄 Switch browser tabs</li>
-                <li>🔊 Press volume keys</li>
-                <li>📐 Rotate device</li>
-                <li>⌨️ Press any key</li>
-                <li>👆 Double tap</li>
-                <li>📏 Resize window</li>
-                <li>🤸 Shake or move device</li>
-                <li>🌀 Twist device</li>
-                <li>👋 Wave over screen (proximity)</li>
+        <div class="triggers-config">
+            <h3>Enable Game Triggers:</h3>
+            <ul id="trigger-list">
+                <!-- Triggers will be dynamically inserted here by script.js -->
             </ul>
         </div>
         
