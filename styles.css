@@ -132,6 +132,39 @@ body {
     font-size: clamp(0.7rem, 2.5vw, 0.9rem);
 }
 
+.permission-banner {
+    display: none; /* Hidden by default */
+    background: rgba(0, 0, 0, 0.4);
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 20px;
+    text-align: center;
+    width: 100%;
+    max-width: 500px;
+}
+
+.permission-banner p {
+    margin-bottom: 15px;
+    font-size: clamp(0.9rem, 3vw, 1.1rem);
+}
+
+.permission-banner button {
+    background-color: #ffeb3b;
+    color: #333;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 10px;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.permission-banner button:hover {
+    transform: scale(1.05);
+}
+
 @keyframes pulse {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.05); }
@@ -180,4 +213,3 @@ body {
         padding: 20px;
     }
 }
-

@@ -1,7 +1,6 @@
 class FartSensor {
     constructor() {
         this.fartCount = 0;
-        this.currentSoundIndex = 0;
         this.sounds = [];
         this.isInitialized = false;
         this.lastFartTime = 0;
@@ -10,7 +9,9 @@ class FartSensor {
         this.elements = {
             counter: document.getElementById('fartCounter'),
             visual: document.getElementById('fartVisual'),
-            sensorDisplay: document.querySelector('.sensor-display')
+            sensorDisplay: document.querySelector('.sensor-display'),
+            permissionBanner: document.getElementById('permission-request'),
+            permissionButton: document.getElementById('permission-button'),
         };
         
         this.init();
@@ -19,34 +20,42 @@ class FartSensor {
     async init() {
         await this.loadSounds();
         this.setupEventListeners();
+        this.checkMotionPermissions();
         this.isInitialized = true;
         console.log('💨 Fart Sensor initialized and ready!');
     }
     
     async loadSounds() {
         const soundFiles = ['fart1.mp3', 'fart2.mp3', 'fart3.mp3', 'fart4.mp3', 'fart5.mp3'];
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
         for (const soundFile of soundFiles) {
-            const audio = new Audio(soundFile);
-            audio.preload = 'auto';
-            audio.volume = 0.7;
-            this.sounds.push(audio);
+            try {
+                const response = await fetch(soundFile);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                this.sounds.push({ buffer: audioBuffer, context: audioContext });
+            } catch (error) {
+                console.error(`Failed to load sound ${soundFile}:`, error);
+            }
         }
+        
+        // Resume context on first user gesture
+        const resumeContext = () => {
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            document.body.removeEventListener('click', resumeContext);
+            document.body.removeEventListener('touchstart', resumeContext);
+        };
+        document.body.addEventListener('click', resumeContext);
+        document.body.addEventListener('touchstart', resumeContext);
     }
     
     setupEventListeners() {
-        const handleFirstInteraction = () => {
-            this.requestMotionPermissions();
-            document.removeEventListener('click', handleFirstInteraction);
-            document.removeEventListener('touchstart', handleFirstInteraction);
-        };
-
         // Tap/Click detection
         document.addEventListener('click', () => this.triggerFart('Tap detected!'));
         document.addEventListener('touchstart', () => this.triggerFart('Touch detected!'));
-        
-        document.addEventListener('click', handleFirstInteraction, { once: true });
-        document.addEventListener('touchstart', handleFirstInteraction, { once: true });
         
         // Tab switching
         document.addEventListener('visibilitychange', () => {
@@ -56,7 +65,6 @@ class FartSensor {
         });
         
         window.addEventListener('blur', () => this.triggerFart('Window blur detected!'));
-        window.addEventListener('focus', () => this.triggerFart('Window focus detected!'));
         
         // Keyboard events (including volume keys)
         document.addEventListener('keydown', (e) => {
@@ -92,33 +100,39 @@ class FartSensor {
             lastTap = currentTime;
         });
         
-        // Mouse movement (desktop only)
-        let mouseMoveTimeout;
-        let mouseMoveCount = 0;
-        document.addEventListener('mousemove', () => {
-            mouseMoveCount++;
-            clearTimeout(mouseMoveTimeout);
-            mouseMoveTimeout = setTimeout(() => {
-                if (mouseMoveCount > 50) { // Lots of movement
-                    this.triggerFart('Frantic mouse movement!');
-                }
-                mouseMoveCount = 0;
-            }, 2000);
-        });
-        
-        // Page load
-        window.addEventListener('load', () => {
-            setTimeout(() => this.triggerFart('Page loaded!'), 1000);
-        });
-        
         // Right click context menu
         document.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
             this.triggerFart('Right click detected!');
         });
 
         // Add sensor event listeners that don't need special permissions
         this.setupNonPermissionSensors();
+
+        if (this.elements.permissionButton) {
+            this.elements.permissionButton.addEventListener('click', (e) => {
+                e.stopPropagation(); // prevent body click from firing a fart
+                this.requestMotionPermissions();
+            });
+        }
+    }
+
+    checkMotionPermissions() {
+        if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+            // This is likely an iOS 13+ device that requires permission.
+            // Let's see if we've already been granted permission.
+            DeviceMotionEvent.requestPermission().then(permissionState => {
+                if (permissionState === 'granted') {
+                    this.setupMotionSensors();
+                } else if (permissionState === 'prompt') {
+                    // Show a button to ask for permission.
+                    this.elements.permissionBanner.style.display = 'block';
+                }
+                // If 'denied', we don't do anything.
+            });
+        } else {
+            // For browsers that don't require explicit permission (like Android)
+            this.setupMotionSensors();
+        }
     }
 
     requestMotionPermissions() {
@@ -127,62 +141,55 @@ class FartSensor {
                 .then(permissionState => {
                     if (permissionState === 'granted') {
                         console.log('Motion sensor permission granted.');
+                        this.elements.permissionBanner.style.display = 'none';
                         this.setupMotionSensors();
+                        this.triggerFart('Motion sensors enabled!');
                     } else {
                         console.log('Motion sensor permission denied.');
+                        this.elements.permissionBanner.innerHTML = '<p>Motion sensor access was denied. You can change this in your browser settings.</p>';
                     }
                 })
                 .catch(console.error);
-        } else {
-            // For browsers that don't require explicit permission (like Android)
-            this.setupMotionSensors();
         }
     }
     
     setupMotionSensors() {
-        if ('DeviceMotionEvent' in window) {
-            let lastX, lastY, lastZ;
-            let lastAlpha, lastBeta, lastGamma;
-            const motionThreshold = 15; // m/s^2
-            const rotationThreshold = 250; // deg/s
-
-            window.addEventListener('devicemotion', (event) => {
-                const { acceleration } = event;
-                const { rotationRate } = event;
-
-                // Shake detection
-                if (acceleration && acceleration.x !== null) {
-                    if (lastX !== undefined) {
-                        const deltaX = Math.abs(acceleration.x - lastX);
-                        const deltaY = Math.abs(acceleration.y - lastY);
-                        const deltaZ = Math.abs(acceleration.z - lastZ);
-                        
-                        if (deltaX + deltaY + deltaZ > motionThreshold) {
-                            this.triggerFart('Device shaken!');
-                        }
-                    }
-                    lastX = acceleration.x;
-                    lastY = acceleration.y;
-                    lastZ = acceleration.z;
-                }
-
-                // Twist detection
-                if (rotationRate && rotationRate.alpha !== null) {
-                    if (lastAlpha !== undefined) {
-                         if (Math.abs(rotationRate.alpha - lastAlpha) > rotationThreshold ||
-                             Math.abs(rotationRate.beta - lastBeta) > rotationThreshold ||
-                             Math.abs(rotationRate.gamma - lastGamma) > rotationThreshold) {
-                            this.triggerFart('Device twisted!');
-                        }
-                    }
-                    lastAlpha = rotationRate.alpha;
-                    lastBeta = rotationRate.beta;
-                    lastGamma = rotationRate.gamma;
-                }
-            });
-        } else {
+        if (!('DeviceMotionEvent' in window)) {
             console.log('DeviceMotionEvent not supported.');
+            return;
         }
+
+        const motionThreshold = 12; // Lowered for more sensitivity
+        const rotationThreshold = 180; // Lowered for more sensitivity
+        let lastMotionTime = 0;
+        const motionDebounce = 500; // ms between motion farts
+
+        window.addEventListener('devicemotion', (event) => {
+            const now = Date.now();
+            if (now - lastMotionTime < motionDebounce) return;
+
+            const { acceleration, rotationRate } = event;
+
+            // Shake detection
+            if (acceleration && acceleration.x !== null) {
+                const magnitude = Math.sqrt(acceleration.x ** 2 + acceleration.y ** 2 + acceleration.z ** 2);
+                if (magnitude > motionThreshold) {
+                    this.triggerFart('Device shaken!');
+                    lastMotionTime = now;
+                    return; // Don't check for twist if shake is detected
+                }
+            }
+
+            // Twist detection
+            if (rotationRate && rotationRate.alpha !== null) {
+                const magnitude = Math.sqrt(rotationRate.alpha ** 2 + rotationRate.beta ** 2 + rotationRate.gamma ** 2);
+                if (magnitude > rotationThreshold) {
+                    this.triggerFart('Device twisted!');
+                    lastMotionTime = now;
+                }
+            }
+        });
+        console.log('Motion sensors are active.');
     }
 
     setupNonPermissionSensors() {
@@ -201,7 +208,7 @@ class FartSensor {
                  }
             });
         } else {
-            console.log('Proximity sensor not supported.');
+            // console.log('Proximity sensor not supported.');
         }
     }
     
@@ -223,31 +230,40 @@ class FartSensor {
     playFartSound() {
         if (this.sounds.length === 0) return;
         
-        // Get random sound
         const randomIndex = Math.floor(Math.random() * this.sounds.length);
         const sound = this.sounds[randomIndex];
         
-        // Reset and play
-        sound.currentTime = 0;
-        sound.play().catch(e => {
-            console.log('Could not play sound:', e.message);
-        });
+        if (sound.context.state === 'suspended') {
+            sound.context.resume();
+        }
+
+        const source = sound.context.createBufferSource();
+        source.buffer = sound.buffer;
+        
+        const gainNode = sound.context.createGain();
+        gainNode.gain.value = 0.7; // Volume
+        
+        source.connect(gainNode);
+        gainNode.connect(sound.context.destination);
+        source.start(0);
     }
     
     updateDisplay() {
         this.elements.counter.textContent = this.fartCount;
         this.elements.counter.style.animation = 'none';
-        setTimeout(() => {
+        // requestAnimationFrame is better for performance than setTimeout for animations
+        requestAnimationFrame(() => {
             this.elements.counter.style.animation = 'pulse 0.5s ease-out';
-        }, 10);
+        });
     }
     
     showVisualEffect() {
         // Visual fart emoji animation
         this.elements.visual.classList.remove('active');
-        setTimeout(() => {
+        // Use requestAnimationFrame for smoother animations
+        requestAnimationFrame(() => {
             this.elements.visual.classList.add('active');
-        }, 10);
+        });
         
         setTimeout(() => {
             this.elements.visual.classList.remove('active');
