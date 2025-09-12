@@ -17,6 +17,7 @@ class FartBopGame {
         this.startGamma = null;
         this.isWaitingForTwist = false;
         this.isWaitingForRotate = false;
+        this.maxAlphaDiff = 0; // Track max twist angle
 
         this.tapTimeout = null;
         this.tapCount = 0;
@@ -225,19 +226,18 @@ class FartBopGame {
             }
 
             const currentAlpha = event.alpha;
-            // Calculate the target angle, which is 180 degrees from the start.
-            const targetAlpha = (this.startAlpha + 180) % 360;
-
-            // Calculate the difference, handling the 360-degree wraparound.
-            let diff = Math.abs(currentAlpha - targetAlpha);
+            // Calculate the angular distance from the starting orientation
+            let diff = Math.abs(currentAlpha - this.startAlpha);
             if (diff > 180) {
-                diff = 360 - diff;
+                diff = 360 - diff; // Handle the 360-degree wrap-around
             }
 
-            // Check if the current angle is "close enough" to the target.
-            // A threshold of 20 degrees (10 on each side) makes it robust.
-            // This means the user has twisted to the opposite side.
-            if (diff <= 20) {
+            // Update the maximum rotation achieved so far for this command
+            this.maxAlphaDiff = Math.max(this.maxAlphaDiff, diff);
+
+            // If the user has twisted far enough at any point, register the action
+            // Using a tolerance (e.g., 170 degrees) makes it more forgiving.
+            if (this.maxAlphaDiff >= 170) {
                 this.handleAction('twist');
             }
         }
@@ -284,6 +284,7 @@ class FartBopGame {
         this.startAlpha = null;
         this.startBeta = null;
         this.startGamma = null;
+        this.maxAlphaDiff = 0; // Reset max twist for the new command
 
         const enabledTriggers = this.triggers.filter(t => t.enabled);
         
@@ -336,6 +337,7 @@ class FartBopGame {
         this.startAlpha = null;
         this.startBeta = null;
         this.startGamma = null;
+        this.maxAlphaDiff = 0;
 
         setTimeout(() => this.nextCommand(), 500);
     }
@@ -350,6 +352,7 @@ class FartBopGame {
         this.startAlpha = null;
         this.startBeta = null;
         this.startGamma = null;
+        this.maxAlphaDiff = 0;
         this.elements.finalScoreDisplay.textContent = this.score;
 
         this.elements.gameUI.classList.add('hidden');
