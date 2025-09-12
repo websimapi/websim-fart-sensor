@@ -27,8 +27,8 @@ export default class Game {
         this.init();
     }
 
-    async init() {
-        await this.audio.loadSounds();
+    init() {
+        this.audio.loadSounds(); // Start loading sounds in the background
         this.ui.renderTriggers(this.triggers, (triggerId, isEnabled) => {
             const trigger = this.triggers.find(t => t.id === triggerId);
             if (trigger) {
