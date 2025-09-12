@@ -19,11 +19,15 @@ class FartBopGame {
         this.isWaitingForRotate = false;
         this.maxAlphaDiff = 0; // Track max twist angle
 
+        // Touch state
+        this.touchStartX = 0;
+        this.touchStartY = 0;
+
         this.tapTimeout = null;
         this.tapCount = 0;
 
         this.elements = {
-            fartCounter: document.getElementById('fartCounter'),
+            fartCounter: document.getElementById('fartCounter'), // No longer exists, but let's keep it for total farts logic if needed later
             visual: document.getElementById('fartVisual'),
             sensorDisplay: document.querySelector('.sensor-display'),
             permissionBanner: document.getElementById('permission-request'),
@@ -43,11 +47,13 @@ class FartBopGame {
         };
 
         this.triggers = [
-            { id: 'tap', name: '📱 Tap', instruction: 'Tap it!', enabled: true, isAvailable: true },
-            { id: 'double_tap', name: '👆 Double Tap', instruction: 'Double Tap it!', enabled: true, isAvailable: true },
-            { id: 'shake', name: '🤸 Shake', instruction: 'Shake it!', enabled: true, isAvailable: 'DeviceMotionEvent' in window },
-            { id: 'twist', name: '🌀 Twist', instruction: 'Twist it!', enabled: true, isAvailable: 'DeviceOrientationEvent' in window },
-            { id: 'rotate', name: '📐 Rotate', instruction: 'Rotate it!', enabled: true, isAvailable: 'DeviceOrientationEvent' in window },
+            { id: 'tap', name: '📱 Tap', instruction: 'Tap it!', enabled: true, isAvailable: true, soundIndex: 0 },
+            { id: 'double_tap', name: '👆 Double Tap', instruction: 'Double Tap it!', enabled: true, isAvailable: true, soundIndex: 1 },
+            { id: 'swipe_up', name: '⬆️ Swipe Up', instruction: 'Swipe Up!', enabled: true, isAvailable: true, soundIndex: 5 },
+            { id: 'swipe_down', name: '⬇️ Swipe Down', instruction: 'Swipe Down!', enabled: true, isAvailable: true, soundIndex: 6 },
+            { id: 'shake', name: '🤸 Shake', instruction: 'Shake it!', enabled: true, isAvailable: 'DeviceMotionEvent' in window, soundIndex: 2 },
+            { id: 'twist', name: '🌀 Twist', instruction: 'Twist it!', enabled: true, isAvailable: 'DeviceOrientationEvent' in window, soundIndex: 3 },
+            { id: 'rotate', name: '📐 Rotate', instruction: 'Rotate it!', enabled: true, isAvailable: 'DeviceOrientationEvent' in window, soundIndex: 4 },
         ];
 
         this.init();
@@ -63,7 +69,7 @@ class FartBopGame {
     }
 
     async loadSounds() {
-        const soundFiles = ['fart1.mp3', 'fart2.mp3', 'fart3.mp3', 'fart4.mp3', 'fart5.mp3'];
+        const soundFiles = ['fart1.mp3', 'fart2.mp3', 'fart3.mp3', 'fart4.mp3', 'fart5.mp3', 'fart6.mp3', 'fart7.mp3'];
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
         for (const soundFile of soundFiles) {
@@ -91,6 +97,10 @@ class FartBopGame {
         // Universal listeners that delegate based on game state
         document.addEventListener('click', () => this.handleTap());
         
+        // Swipe listeners
+        document.addEventListener('touchstart', e => this.handleTouchStart(e), { passive: true });
+        document.addEventListener('touchend', e => this.handleTouchEnd(e), { passive: true });
+
         if (this.triggers.some(t => ['twist', 'rotate'].includes(t.id) && t.isAvailable)) {
             window.addEventListener('deviceorientation', e => this.handleDeviceOrientation(e));
         }
@@ -100,6 +110,28 @@ class FartBopGame {
                 e.stopPropagation();
                 this.requestMotionPermissions();
             });
+        }
+    }
+
+    handleTouchStart(e) {
+        this.touchStartX = e.changedTouches[0].screenX;
+        this.touchStartY = e.changedTouches[0].screenY;
+    }
+
+    handleTouchEnd(e) {
+        const touchEndX = e.changedTouches[0].screenX;
+        const touchEndY = e.changedTouches[0].screenY;
+        const deltaX = touchEndX - this.touchStartX;
+        const deltaY = touchEndY - this.touchStartY;
+        const swipeThreshold = 50; // pixels
+
+        // Check for vertical swipe
+        if (Math.abs(deltaY) > swipeThreshold && Math.abs(deltaY) > Math.abs(deltaX)) {
+            if (deltaY < 0) { // Swipe Up
+                this.handleAction('swipe_up');
+            } else { // Swipe Down
+                this.handleAction('swipe_down');
+            }
         }
     }
 
@@ -305,7 +337,7 @@ class FartBopGame {
         }
         
         this.elements.commandText.textContent = this.currentCommand.instruction;
-        this.playFartSound(); // Command sound
+        this.playFartSound(this.currentCommand.soundIndex); // Command sound
         this.startTimer();
     }
     
@@ -326,7 +358,8 @@ class FartBopGame {
         this.score++;
         this.elements.scoreDisplay.textContent = this.score;
         this.timeLimit = Math.max(800, this.timeLimit * 0.95); // Speed up
-        this.triggerFart(); // Reward fart
+        this.playFartSound(this.currentCommand.soundIndex); // Reward fart
+        this.showVisualEffect(); // visual effect only
         clearTimeout(this.timer);
         this.currentCommand = null;
         this.elements.commandText.textContent = 'Correct!';
@@ -365,17 +398,22 @@ class FartBopGame {
         if (now - this.lastFartTime < this.minFartInterval) return;
         this.lastFartTime = now;
         this.totalFarts++;
-        this.elements.fartCounter.textContent = this.totalFarts;
-        this.playFartSound();
+        this.playFartSound(); // Plays a random sound
         this.showVisualEffect();
     }
 
-    playFartSound() {
+    playFartSound(soundIndex = -1) {
         if (this.sounds.length === 0) return;
         if (this.audioContext.state === 'suspended') this.audioContext.resume();
 
         const source = this.audioContext.createBufferSource();
-        source.buffer = this.sounds[Math.floor(Math.random() * this.sounds.length)];
+        
+        let bufferIndex = soundIndex;
+        if (bufferIndex === -1 || bufferIndex >= this.sounds.length) {
+            bufferIndex = Math.floor(Math.random() * this.sounds.length);
+        }
+
+        source.buffer = this.sounds[bufferIndex];
         source.connect(this.audioContext.destination);
         source.start(0);
     }

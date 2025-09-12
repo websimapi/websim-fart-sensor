@@ -27,28 +27,28 @@ body {
 }
 
 .header {
-    margin-bottom: 40px;
+    margin-bottom: 20px;
 }
 
 .title {
-    font-size: clamp(2rem, 8vw, 4rem);
+    font-size: clamp(2rem, 8vw, 3.5rem);
     font-weight: 700;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     animation: pulse 2s infinite;
 }
 
 .subtitle {
-    font-size: clamp(0.9rem, 3vw, 1.2rem);
+    font-size: clamp(0.9rem, 3vw, 1.1rem);
     opacity: 0.9;
-    margin-bottom: 20px;
+    margin-bottom: 10px;
 }
 
 .sensor-display {
     background: rgba(255,255,255,0.1);
     backdrop-filter: blur(10px);
     border-radius: 20px;
-    padding: 20px 40px;
+    padding: 15px 30px;
     margin-bottom: 20px;
     border: 1px solid rgba(255,255,255,0.2);
     width: 100%;
@@ -59,8 +59,9 @@ body {
 
 .fart-counter {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
+    gap: 15px;
     font-size: clamp(1rem, 4vw, 1.5rem);
 }
 
@@ -110,7 +111,7 @@ body {
 .triggers-config {
     background: rgba(0,0,0,0.2);
     border-radius: 15px;
-    padding: 25px;
+    padding: 20px;
     margin-bottom: 30px;
     width: 100%;
     max-width: 500px;
@@ -118,7 +119,7 @@ body {
 
 .triggers-config h3 {
     margin-bottom: 15px;
-    font-size: clamp(1rem, 4vw, 1.3rem);
+    font-size: clamp(1rem, 4vw, 1.2rem);
     color: #ffeb3b;
 }
 
@@ -333,7 +334,7 @@ body {
 #command-text {
     font-size: clamp(1.8rem, 7vw, 3rem);
     font-weight: 700;
-    margin-bottom: 20px;
+    margin-bottom: 15px;
     color: #ffeb3b;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
 }
