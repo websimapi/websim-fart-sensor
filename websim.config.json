@@ -1,0 +1,17 @@
+{
+  "database": {
+    "schema": {
+      "fart_scores": {
+        "id": {
+          "type": "text",
+          "description": "The user's unique ID. Primary key."
+        },
+        "count": {
+          "type": "integer",
+          "description": "Total farts detected for the user."
+        }
+      }
+    }
+  }
+}
+
