@@ -73,9 +73,9 @@ function App() {
       const user = await window.websim.getCurrentUser();
       currentUserRef.current = user;
       if (user) {
-        const userScore = await room.collection("fart_scores").get(user.id);
-        if (userScore) {
-          setFartCount(userScore.count);
+        const userScores = await room.collection("fart_scores").filter({ id: user.id }).getList();
+        if (userScores && userScores.length > 0) {
+          setFartCount(userScores[0].count);
         } else {
           room.collection("fart_scores").upsert({ id: user.id, count: 0 }).catch(console.error);
         }
