@@ -11,9 +11,13 @@ class FartBopGame {
         this.timeLimit = 3000; // 3 seconds
         this.timer = null;
         
-        // Double tap fix: Moved from instance-wide to a more contained scope
+        // Motion sensor state
         this.startAlpha = null;
+        this.startBeta = null;
+        this.startGamma = null;
         this.isWaitingForTwist = false;
+        this.isWaitingForRotate = false;
+
         this.tapTimeout = null;
         this.tapCount = 0;
 
@@ -42,7 +46,7 @@ class FartBopGame {
             { id: 'double_tap', name: '👆 Double Tap', instruction: 'Double Tap it!', enabled: true, isAvailable: true },
             { id: 'shake', name: '🤸 Shake', instruction: 'Shake it!', enabled: true, isAvailable: 'DeviceMotionEvent' in window },
             { id: 'twist', name: '🌀 Twist', instruction: 'Twist it!', enabled: true, isAvailable: 'DeviceOrientationEvent' in window },
-            { id: 'rotate', name: '📐 Rotate', instruction: 'Rotate it!', enabled: false, isAvailable: 'orientation' in window || 'onorientationchange' in window },
+            { id: 'rotate', name: '📐 Rotate', instruction: 'Rotate it!', enabled: true, isAvailable: 'DeviceOrientationEvent' in window },
         ];
 
         this.init();
@@ -86,9 +90,7 @@ class FartBopGame {
         // Universal listeners that delegate based on game state
         document.addEventListener('click', () => this.handleTap());
         
-        window.addEventListener('orientationchange', () => this.handleAction('rotate'));
-        
-        if (this.triggers.find(t => t.id === 'twist')?.isAvailable) {
+        if (this.triggers.some(t => ['twist', 'rotate'].includes(t.id) && t.isAvailable)) {
             window.addEventListener('deviceorientation', e => this.handleDeviceOrientation(e));
         }
 
@@ -127,6 +129,8 @@ class FartBopGame {
 
             if (this.currentCommand.id === actionId) {
                 this.correctAction();
+            } else if (actionId !== 'tap' && this.currentCommand.id === 'double_tap') {
+                // Ignore single tap when waiting for double tap
             } else {
                 this.gameOver();
             }
@@ -161,6 +165,7 @@ class FartBopGame {
 
     checkMotionPermissions() {
         if (typeof DeviceMotionEvent.requestPermission === 'function' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            this.elements.permissionBanner.querySelector('p').textContent = `To detect shaking, twisting, and rotating, we need access to your device's motion sensors.`;
             this.elements.permissionBanner.style.display = 'block';
         } else {
             this.setupMotionSensors();
@@ -180,7 +185,7 @@ class FartBopGame {
             if (motionState === 'granted' || orientationState === 'granted') {
                 this.elements.permissionBanner.style.display = 'none';
                 this.setupMotionSensors();
-                if (orientationState !== 'granted') console.log('Twist action might not work without orientation permission.');
+                if (orientationState !== 'granted') console.log('Twist and Rotate actions might not work without orientation permission.');
                 if (motionState !== 'granted') console.log('Shake action might not work without motion permission.');
             } else {
                 this.elements.permissionBanner.innerHTML = '<p>Motion/Orientation access denied. You can change this in your browser settings.</p>';
@@ -209,23 +214,40 @@ class FartBopGame {
     }
     
     handleDeviceOrientation(event) {
-        if (!this.isGameActive || !this.isWaitingForTwist || event.alpha === null) {
+        if (!this.isGameActive || event.alpha === null) {
             return;
         }
 
-        if (this.startAlpha === null) {
-            this.startAlpha = event.alpha;
-            return;
+        if (this.isWaitingForTwist) {
+            if (this.startAlpha === null) {
+                this.startAlpha = event.alpha;
+                return;
+            }
+
+            const currentAlpha = event.alpha;
+            let diff = Math.abs(currentAlpha - this.startAlpha);
+            if (diff > 180) {
+                diff = 360 - diff;
+            }
+
+            if (diff >= 180) { // Require a 180 degree twist
+                this.handleAction('twist');
+            }
         }
 
-        const currentAlpha = event.alpha;
-        let diff = Math.abs(currentAlpha - this.startAlpha);
-        if (diff > 180) {
-            diff = 360 - diff;
-        }
+        if (this.isWaitingForRotate) {
+            if (this.startBeta === null || this.startGamma === null) {
+                this.startBeta = event.beta;
+                this.startGamma = event.gamma;
+                return;
+            }
 
-        if (diff >= 90) { // Check for 90 degrees in either direction
-            this.handleAction('twist');
+            const betaDiff = Math.abs(event.beta - this.startBeta);
+            const gammaDiff = Math.abs(event.gamma - this.startGamma);
+
+            if (betaDiff >= 90 || gammaDiff >= 90) {
+                this.handleAction('rotate');
+            }
         }
     }
 
@@ -249,9 +271,12 @@ class FartBopGame {
     }
     
     nextCommand() {
-        // Reset twist tracking for the new command
+        // Reset motion tracking for the new command
         this.isWaitingForTwist = false;
+        this.isWaitingForRotate = false;
         this.startAlpha = null;
+        this.startBeta = null;
+        this.startGamma = null;
 
         const enabledTriggers = this.triggers.filter(t => t.enabled);
         
@@ -266,6 +291,9 @@ class FartBopGame {
         
         if (this.currentCommand.id === 'twist') {
             this.isWaitingForTwist = true;
+        }
+        if (this.currentCommand.id === 'rotate') {
+            this.isWaitingForRotate = true;
         }
         
         this.elements.commandText.textContent = this.currentCommand.instruction;
@@ -294,8 +322,13 @@ class FartBopGame {
         clearTimeout(this.timer);
         this.currentCommand = null;
         this.elements.commandText.textContent = 'Correct!';
-        this.isWaitingForTwist = false; // Stop listening for twist
+        
+        // Stop listening for motion
+        this.isWaitingForTwist = false;
+        this.isWaitingForRotate = false;
         this.startAlpha = null;
+        this.startBeta = null;
+        this.startGamma = null;
 
         setTimeout(() => this.nextCommand(), 500);
     }
@@ -306,7 +339,10 @@ class FartBopGame {
         clearTimeout(this.timer);
         this.currentCommand = null;
         this.isWaitingForTwist = false;
+        this.isWaitingForRotate = false;
         this.startAlpha = null;
+        this.startBeta = null;
+        this.startGamma = null;
         this.elements.finalScoreDisplay.textContent = this.score;
 
         this.elements.gameUI.classList.add('hidden');
