@@ -69,8 +69,14 @@ class FartBopGame {
     }
 
     setupEventListeners() {
-        this.elements.startGameBtn.addEventListener('click', () => this.startGame());
-        this.elements.restartGameBtn.addEventListener('click', () => this.startGame());
+        this.elements.startGameBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.startGame();
+        });
+        this.elements.restartGameBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.startGame();
+        });
 
         // Universal listeners that delegate based on game state
         document.addEventListener('click', () => this.handleAction('tap'));
@@ -91,7 +97,13 @@ class FartBopGame {
 
     handleAction(actionId) {
         if (this.isGameActive) {
-            if (this.currentCommand && this.currentCommand.id === actionId) {
+            if (!this.currentCommand) {
+                // If there's no active command, do nothing.
+                // This prevents game over between commands or at the start.
+                return;
+            }
+
+            if (this.currentCommand.id === actionId) {
                 this.correctAction();
             } else {
                 this.gameOver();
@@ -115,7 +127,8 @@ class FartBopGame {
                 trigger.enabled = false;
             } else {
                 li.classList.toggle('enabled', trigger.enabled);
-                li.addEventListener('click', () => {
+                li.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent document click listener from firing
                     trigger.enabled = !trigger.enabled;
                     li.classList.toggle('enabled', trigger.enabled);
                 });
